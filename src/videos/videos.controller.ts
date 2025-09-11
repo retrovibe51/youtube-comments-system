@@ -12,7 +12,6 @@ import { ApiTags } from '@nestjs/swagger';
 
 import { ResponseTypeDTO } from 'src/common/dtos/response/response-type.dto';
 import { VideosService } from './videos.service';
-import { Video } from 'src/common/types';
 import { AddVideoDto } from './dtos/request/add-video.dto';
 import { GetVideoListDto } from './dtos/request/get-video-list.dto';
 import { Pagination } from 'src/common/dtos/response/pagination.dto';
@@ -33,12 +32,16 @@ export class VideosController {
   }
 
   @Post()
-  async addVideo(@Body() addVideoDto: AddVideoDto) {
+  async addVideo(
+    @Body() addVideoDto: AddVideoDto,
+  ): Promise<ResponseTypeDTO<void>> {
     return this.videosService.addVideo(addVideoDto);
   }
 
-  @Delete()
-  async deleteVideo(@Param('id', ParseIntPipe) id: number) {
+  @Delete(':id')
+  async deleteVideo(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ResponseTypeDTO<void>> {
     return this.videosService.deleteVideo(id);
   }
 }

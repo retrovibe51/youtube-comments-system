@@ -50,7 +50,7 @@ export class VideosService {
         limit,
         pageNo,
         numberOfPages: Math.ceil(count / limit),
-        totalItemCount: count,
+        totalItemCount: Number(count),
       };
 
       return {
@@ -66,7 +66,7 @@ export class VideosService {
     }
   }
 
-  async addVideo(addVideoDto: AddVideoDto) {
+  async addVideo(addVideoDto: AddVideoDto): Promise<ResponseTypeDTO<void>> {
     try {
       await this.db.insert(videos).values(addVideoDto);
 
@@ -76,13 +76,13 @@ export class VideosService {
       };
     } catch (error) {
       throw new HttpException(
-        'There was an error on deleting the video.',
+        'There was an error on adding the video.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 
-  async deleteVideo(id: number) {
+  async deleteVideo(id: number): Promise<ResponseTypeDTO<void>> {
     try {
       await this.db
         .update(videos)

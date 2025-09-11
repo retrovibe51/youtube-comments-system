@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsInt,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -24,7 +24,7 @@ export class AddCommentDto {
     example: 1,
   })
   @IsNotEmpty()
-  @IsNumber()
+  @IsInt()
   userId: number;
 
   @ApiProperty({
@@ -33,7 +33,7 @@ export class AddCommentDto {
     example: 1,
   })
   @IsNotEmpty()
-  @IsNumber()
+  @IsInt()
   videoId: number;
 
   @ApiPropertyOptional({
@@ -42,6 +42,6 @@ export class AddCommentDto {
     example: 1,
   })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   parentCommentId?: number;
 }

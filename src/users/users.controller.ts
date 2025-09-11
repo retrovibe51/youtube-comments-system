@@ -21,7 +21,9 @@ export class UsersController {
   }
 
   @Post()
-  async createUser(@Body() createUserDto: CreateUserDto) {
+  async createUser(
+    @Body() createUserDto: CreateUserDto,
+  ): Promise<ResponseTypeDTO<void>> {
     return this.usersService.createUser(createUserDto);
   }
 }

@@ -34,7 +34,7 @@ export class UsersService {
         limit,
         pageNo,
         numberOfPages: Math.ceil(count / limit),
-        totalItemCount: count,
+        totalItemCount: Number(count),
       };
 
       return {
@@ -50,7 +50,21 @@ export class UsersService {
     }
   }
 
-  async createUser(createUserDto: CreateUserDto) {
-    return this.db.insert(users).values(createUserDto);
+  async createUser(
+    createUserDto: CreateUserDto,
+  ): Promise<ResponseTypeDTO<void>> {
+    try {
+      await this.db.insert(users).values(createUserDto);
+
+      return {
+        status: HttpStatus.CREATED,
+        message: 'User created successfully.',
+      };
+    } catch (error) {
+      throw new HttpException(
+        'There was an error on creating the user.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

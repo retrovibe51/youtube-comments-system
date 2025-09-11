@@ -35,6 +35,7 @@ export class CommentsService {
       .select()
       .from(videos)
       .where(eq(videos.id, videoId))
+      .limit(1)
       .then((rows) => rows[0]);
 
     if (!existingVideo) {
@@ -51,6 +52,7 @@ export class CommentsService {
         .select()
         .from(comments)
         .where(eq(comments.id, parentCommentId))
+        .limit(1)
         .then((rows) => rows[0]);
 
       if (!existingParentComment) {
@@ -100,14 +102,13 @@ export class CommentsService {
             : {
                 userReaction: sql<string | null>`NULL`,
               }),
-          ...(typeof parentCommentId === 'number' &&
-            parentCommentId > 0 && {
-              replyCount: sql<number>`(
+          ...(typeof parentCommentId !== 'number' && {
+            replyCount: sql<number>`(
             SELECT COUNT(*) FROM ${comments} AS replies
             WHERE replies.parent_comment_id = ${comments.id}
             AND replies.is_deleted = FALSE
           )`,
-            }),
+          }),
         })
         .from(comments)
         .innerJoin(users, eq(comments.userId, users.id))
@@ -128,7 +129,7 @@ export class CommentsService {
         limit,
         pageNo,
         numberOfPages: Math.ceil(count / limit),
-        totalItemCount: count,
+        totalItemCount: Number(count),
       };
 
       return {
@@ -147,6 +148,32 @@ export class CommentsService {
   async addComment(
     addCommentDto: AddCommentDto,
   ): Promise<ResponseTypeDTO<void>> {
+    const { parentCommentId, videoId } = addCommentDto;
+
+    if (parentCommentId) {
+      const existingParentComment = await this.db
+        .select()
+        .from(comments)
+        .where(
+          and(eq(comments.id, parentCommentId), eq(comments.videoId, videoId)),
+        )
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      if (!existingParentComment) {
+        throw new HttpException(
+          'Parent comment not found.',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      if (existingParentComment.parentCommentId) {
+        throw new HttpException(
+          'Cannot reply to another reply comment.',
+          HttpStatus.NOT_ACCEPTABLE,
+        );
+      }
+    }
+
     try {
       await this.db.insert(comments).values(addCommentDto);
 
@@ -190,6 +217,7 @@ export class CommentsService {
       .select()
       .from(comments)
       .where(eq(comments.id, commentId))
+      .limit(1)
       .then((rows) => rows[0]);
 
     if (!existingComment) {
@@ -206,6 +234,7 @@ export class CommentsService {
             eq(commentReactions.userId, userId),
           ),
         )
+        .limit(1)
         .then((rows) => rows[0]);
 
       if (!existingReaction) {

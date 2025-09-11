@@ -21,7 +21,6 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // getting the error status and message based on the exception
     const errorInfo: any = this.getExceptionInfo(exception);
 
-    // interface for the response body
     const jsonBody: ErrorResponseDTO = {
       status: errorInfo.status,
       url: request.path,
@@ -33,11 +32,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     response.status(errorInfo.status).json(jsonBody);
   }
 
-  /**
-   * Gets the exception information
-   * @param exception
-   * @returns status and message of the exception
-   */
+  // Gets the exception information
   getExceptionInfo(exception: any): { status: number; message: string } {
     const status: number =
       exception instanceof HttpException

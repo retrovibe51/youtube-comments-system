@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsEnum, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty } from 'class-validator';
 import { ReactionTypeEnum } from 'src/comments/enums/reaction-type.enum';
 
 export class AddReactionDto {
@@ -10,7 +9,7 @@ export class AddReactionDto {
     example: 1,
   })
   @IsNotEmpty()
-  @IsNumber()
+  @IsInt()
   commentId: number;
 
   @ApiProperty({
@@ -19,7 +18,7 @@ export class AddReactionDto {
     example: 1,
   })
   @IsNotEmpty()
-  @IsNumber()
+  @IsInt()
   userId: number;
 
   @ApiProperty({

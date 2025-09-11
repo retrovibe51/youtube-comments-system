@@ -39,7 +39,7 @@ export class CommentsController {
     return this.commentsService.addComment(addCommentDto);
   }
 
-  @Delete()
+  @Delete(':id')
   async deleteComment(
     @Param('id', ParseIntPipe) id: number,
   ): Promise<ResponseTypeDTO<void>> {

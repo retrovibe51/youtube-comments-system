@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNumber, IsOptional, Min } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CommentListSortEnum } from 'src/comments/enums/comment-list-sort-enum';
 
 export class GetCommentListDto {
@@ -25,7 +25,7 @@ export class GetCommentListDto {
   limit: number;
 
   @ApiPropertyOptional({
-    description: 'ID of parent comment',
+    description: 'ID of parent comment for fetching replies',
     example: 1,
     minimum: 1,
   })
