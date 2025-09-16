@@ -29,6 +29,10 @@ This will set up the project including the creation of the database and the exec
 
 `docker compose run --rm ycsbackend yarn drizzle:introspect`
 
+### For applying migrations to the database
+
+`docker compose run --rm ycsbackend yarn drizzle:migrate`
+
 ### API documentation (Swagger)
 
 `http://localhost:3031/docs`

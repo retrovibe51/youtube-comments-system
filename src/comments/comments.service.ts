@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { eq, sql, and, isNull } from 'drizzle-orm';
+import { PgTransaction } from 'drizzle-orm/pg-core';
 
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pagination } from 'src/common/dtos/response/pagination.dto';
@@ -69,10 +70,7 @@ export class CommentsService {
 
     const sortClause =
       sortBy === CommentListSortEnum.TOP_COMMENTS
-        ? sql`
-            COUNT(*) FILTER (WHERE ${commentReactions.reactionType} = 'like') -
-            COUNT(*) FILTER (WHERE ${commentReactions.reactionType} = 'dislike') DESC
-          `
+        ? sql`${comments.score} DESC`
         : sql`${comments.createdAt} DESC`;
 
     try {
@@ -87,8 +85,14 @@ export class CommentsService {
           },
           isEdited: comments.isEdited,
           createdAt: comments.createdAt,
-          likeCount: sql<number>`COUNT(*) FILTER (WHERE ${commentReactions.reactionType} = 'like')`,
-          dislikeCount: sql<number>`COUNT(*) FILTER (WHERE ${commentReactions.reactionType} = 'dislike')`,
+          likeCount: comments.likeCount,
+          dislikeCount: comments.dislikeCount,
+          replyCount: comments.replyCount,
+          ...(typeof parentCommentId !== 'number'
+            ? {
+                replyCount: comments.replyCount,
+              }
+            : {}),
           ...(userId
             ? {
                 userReaction: sql<string | null>`(
@@ -102,13 +106,6 @@ export class CommentsService {
             : {
                 userReaction: sql<string | null>`NULL`,
               }),
-          ...(typeof parentCommentId !== 'number' && {
-            replyCount: sql<number>`(
-            SELECT COUNT(*) FROM ${comments} AS replies
-            WHERE replies.parent_comment_id = ${comments.id}
-            AND replies.is_deleted = FALSE
-          )`,
-          }),
         })
         .from(comments)
         .innerJoin(users, eq(comments.userId, users.id))
@@ -175,7 +172,13 @@ export class CommentsService {
     }
 
     try {
-      await this.db.insert(comments).values(addCommentDto);
+      await this.db.transaction(async (tx: PgTransaction<any>) => {
+        if (parentCommentId) {
+          this.updateScore(tx, parentCommentId);
+        }
+
+        await tx.insert(comments).values(addCommentDto);
+      });
 
       return {
         status: HttpStatus.CREATED,
@@ -190,16 +193,36 @@ export class CommentsService {
   }
 
   async deleteComment(id: number): Promise<ResponseTypeDTO<void>> {
-    try {
-      await this.db
-        .update(comments)
-        .set({
-          isDeleted: true,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(comments.id, id));
+    const existingComment = await this.db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, id))
+      .limit(1)
+      .then((rows) => rows[0]);
 
-      return { status: HttpStatus.OK, message: 'Video deleted successfully.' };
+    if (!existingComment) {
+      throw new HttpException('Comment not found.', HttpStatus.NOT_FOUND);
+    }
+
+    try {
+      await this.db.transaction(async (tx: PgTransaction<any>) => {
+        await tx
+          .update(comments)
+          .set({
+            isDeleted: true,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(comments.id, id));
+
+        if (existingComment.parentCommentId) {
+          await this.updateScore(tx, existingComment.parentCommentId);
+        }
+      });
+
+      return {
+        status: HttpStatus.OK,
+        message: 'Comment deleted successfully.',
+      };
     } catch (error) {
       throw new HttpException(
         'There was an error on deleting the comment.',
@@ -224,58 +247,120 @@ export class CommentsService {
       throw new HttpException('Comment not found.', HttpStatus.NOT_FOUND);
     }
 
+    const existingUser = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!existingUser) {
+      throw new HttpException('User not found.', HttpStatus.NOT_FOUND);
+    }
+
+    const existingReaction = await this.db
+      .select()
+      .from(commentReactions)
+      .where(
+        and(
+          eq(commentReactions.commentId, commentId),
+          eq(commentReactions.userId, userId),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]);
+
     try {
-      const existingReaction = await this.db
-        .select()
-        .from(commentReactions)
-        .where(
-          and(
-            eq(commentReactions.commentId, commentId),
-            eq(commentReactions.userId, userId),
-          ),
-        )
-        .limit(1)
-        .then((rows) => rows[0]);
+      const result = await this.db.transaction(
+        async (tx: PgTransaction<any>) => {
+          if (!existingReaction) {
+            // adding a reaction
+            await tx.insert(commentReactions).values({
+              commentId,
+              userId,
+              reactionType,
+            });
 
-      if (!existingReaction) {
-        // adding a reaction
-        await this.db.insert(commentReactions).values({
-          commentId,
-          userId,
-          reactionType,
-        });
+            await this.updateScore(tx, commentId);
 
-        return {
-          status: HttpStatus.OK,
-          message: 'Reaction added successfully.',
-        };
-      } else if (reactionType === existingReaction.reactionType) {
-        // removing existing reaction
-        await this.db
-          .delete(commentReactions)
-          .where(eq(commentReactions.id, existingReaction.id));
+            return {
+              status: HttpStatus.OK,
+              message: 'Reaction added successfully.',
+            };
+          } else if (reactionType === existingReaction.reactionType) {
+            // removing existing reaction
+            await tx
+              .delete(commentReactions)
+              .where(eq(commentReactions.id, existingReaction.id));
 
-        return {
-          status: HttpStatus.OK,
-          message: 'Reaction removed successfully.',
-        };
-      } else {
-        // changing existing reaction
-        await this.db
-          .update(commentReactions)
-          .set({ reactionType: addReactionDto.reactionType })
-          .where(eq(commentReactions.id, existingReaction.id));
+            await this.updateScore(tx, commentId);
 
-        return {
-          status: HttpStatus.OK,
-          message: 'Reaction added successfully.',
-        };
-      }
+            return {
+              status: HttpStatus.OK,
+              message: 'Reaction removed successfully.',
+            };
+          } else {
+            // changing existing reaction
+            await tx
+              .update(commentReactions)
+              .set({ reactionType: addReactionDto.reactionType })
+              .where(eq(commentReactions.id, existingReaction.id));
+
+            await this.updateScore(tx, commentId);
+
+            return {
+              status: HttpStatus.OK,
+              message: 'Reaction added successfully.',
+            };
+          }
+        },
+      );
+
+      return result;
     } catch (error) {
       throw new HttpException(
         'There was an error on adding a reaction.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private async updateScore(tx: PgTransaction<any>, commentId: number) {
+    const [reactionCounts] = await tx
+      .select({
+        likes: sql<number>`COUNT(*) FILTER (WHERE reaction_type = 'like')`,
+        dislikes: sql<number>`COUNT(*) FILTER (WHERE reaction_type = 'dislike')`,
+      })
+      .from(commentReactions)
+      .where(eq(commentReactions.commentId, commentId));
+
+    const [replyStats] = await tx
+      .select({
+        replyCount: sql<number>`COUNT(*)`,
+      })
+      .from(comments)
+      .where(
+        and(
+          eq(comments.parentCommentId, commentId),
+          eq(comments.isDeleted, false),
+        ),
+      );
+
+    const likeCount = Number(reactionCounts.likes);
+    const dislikeCount = Number(reactionCounts.dislikes);
+    const replyCount = Number(replyStats.replyCount);
+
+    // setting the score of comment: 1.4 weight for likes, 1.2 weight for dislikes, and 1 for replies
+    const score = likeCount * 1.4 - dislikeCount * 1.2 + replyCount * 1.0;
+
+    await tx
+      .update(comments)
+      .set({
+        score,
+        likeCount,
+        dislikeCount,
+        replyCount,
+      })
+      .where(eq(comments.id, commentId));
   }
 }
